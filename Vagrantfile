@@ -38,7 +38,6 @@ end
 puts "Platform: " + cpus.to_s + " CPUs, " + memory.to_s + " MB memory"
 
 Vagrant.configure(2) do |config|
-
   config.vm.box = "generic/debian9"
 
   config.vm.provider "virtualbox" do |v|
@@ -71,6 +70,9 @@ Vagrant.configure(2) do |config|
     apt-get update
     apt-get install -y gpgv2 gnupg2 g++ g++-6-multilib git docker-ce fontforge-nox python-debian schroot
     apt-get -y -t stretch-backports install meson
+
+    #install adobe font devkit to build source san hans
+    pip install afdko
 
     #winehq-devel is installed to pull in dependencies to run Wine
     apt-get install -y --install-recommends winehq-devel

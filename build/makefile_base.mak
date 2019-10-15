@@ -401,7 +401,7 @@ $(DIST_GECKO64): | $(DIST_GECKO_DIR)
 		mkdir -p $(SRCDIR)/contrib/; \
 		if [ ! -e "$(SRCDIR)/contrib/$(GECKO64_MSI)" ]; then \
 			echo ">>>> Downloading wine-gecko. To avoid this in future, put it here: $(SRCDIR)/../gecko/$(GECKO64_MSI)"; \
-			wget -O "$(SRCDIR)/contrib/$(GECKO64_MSI)" "https://dl.winehq.org/wine/wine-gecko/$(GECKO_VER)/$(GECKO64_MSI)"; \
+			wget -O "$(SRCDIR)/contrib/$(GECKO64_MSI)" "$(GECKO64_MSI_URL)"; \
 		fi; \
 		cp "$(SRCDIR)/contrib/$(GECKO64_MSI)" "$@"; \
 	fi
@@ -413,7 +413,7 @@ $(DIST_GECKO32): | $(DIST_GECKO_DIR)
 		mkdir -p $(SRCDIR)/contrib/; \
 		if [ ! -e "$(SRCDIR)/contrib/$(GECKO32_MSI)" ]; then \
 			echo ">>>> Downloading wine-gecko. To avoid this in future, put it here: $(SRCDIR)/../gecko/$(GECKO32_MSI)"; \
-			wget -O "$(SRCDIR)/contrib/$(GECKO32_MSI)" "https://dl.winehq.org/wine/wine-gecko/$(GECKO_VER)/$(GECKO32_MSI)"; \
+			wget -O "$(SRCDIR)/contrib/$(GECKO32_MSI)" "$(GECKO32_MSI_URL)"; \
 		fi; \
 		cp "$(SRCDIR)/contrib/$(GECKO32_MSI)" "$@"; \
 	fi
@@ -437,6 +437,7 @@ $(DIST_WINEMONO): | $(DIST_WINEMONO_DIR)
 $(DIST_FONTS): fonts
 	mkdir -p $@
 	cp $(FONTS_OBJ)/*.ttf "$@"
+	cp $(FONTS_OBJ)/*.otf "$@"
 
 .PHONY: dist
 
@@ -452,10 +453,12 @@ dist: $(DIST_TARGETS) ffmpeg wine vrclient lsteamclient steam dxvk d9vk | $(DST_
 		ln -s $(FONTLINKPATH)/LiberationSans-Regular.ttf $(abspath $(DIST_PREFIX))/drive_c/windows/Fonts/arial.ttf && \
 		ln -s $(FONTLINKPATH)/LiberationSans-Bold.ttf $(abspath $(DIST_PREFIX))/drive_c/windows/Fonts/arialbd.ttf && \
 		ln -s $(FONTLINKPATH)/LiberationSerif-Regular.ttf $(abspath $(DIST_PREFIX))/drive_c/windows/Fonts/times.ttf && \
-		ln -s $(FONTLINKPATH)/LiberationMono-Regular.ttf $(abspath $(DIST_PREFIX))/drive_c/windows/Fonts/cour.ttf
+		ln -s $(FONTLINKPATH)/LiberationMono-Regular.ttf $(abspath $(DIST_PREFIX))/drive_c/windows/Fonts/cour.ttf && \
+		ln -s $(FONTLINKPATH)/SourceHanSansSCRegular.otf $(abspath $(DIST_PREFIX))/drive_c/windows/Fonts/msyh.ttf
 #The use of "arial" here is for compatibility with programs that require that exact string. These links do not point to Arial.
 #The use of "times" here is for compatibility with programs that require that exact string. This link does not point to Times New Roman.
 #The use of "cour" here is for compatibility with programs that require that exact string. This link does not point to Courier New.
+#The use of "msyh" here is for compatibility with programs that require that exact string. This link does not point to Microsoft YaHei.
 
 deploy: dist | $(filter-out dist deploy install,$(MAKECMDGOALS))
 	mkdir -p $(DEPLOY_DIR) && \
@@ -466,7 +469,7 @@ deploy: dist | $(filter-out dist deploy install,$(MAKECMDGOALS))
 install: dist | $(filter-out dist deploy install,$(MAKECMDGOALS))
 	if [ ! -d $(STEAM_DIR) ]; then echo >&2 "!! "$(STEAM_DIR)" does not exist, cannot install"; return 1; fi
 	mkdir -p $(STEAM_DIR)/compatibilitytools.d/$(BUILD_NAME)
-	cp -a $(DST_BASE)/* $(STEAM_DIR)/compatibilitytools.d/$(BUILD_NAME)
+	cp -r $(DST_BASE)/* $(STEAM_DIR)/compatibilitytools.d/$(BUILD_NAME)
 	@echo "Installed Proton to "$(STEAM_DIR)/compatibilitytools.d/$(BUILD_NAME)
 	@echo "You may need to restart Steam to select this tool"
 
@@ -1115,6 +1118,76 @@ bison32-intermediate: $(BISON_CONFIGURE_FILES32) $(filter $(MAKECMDGOALS),bison3
 	touch $(BISON_BIN32)
 
 ##
+## bison -- necessary for wine, steam runtime version too old
+##
+
+# TODO Don't bother with this in native mode
+
+$(BISON):
+	if [ -e "$(SRCDIR)/../bison/$(BISON_TARBALL)" ]; then \
+		mkdir -p $(dir $@); \
+		tar -xf "$(SRCDIR)/../bison/$(BISON_TARBALL)" -C "$(dir $@)"; \
+	else \
+		mkdir -p $(SRCDIR)/contrib/; \
+		if [ ! -e "$(SRCDIR)/contrib/$(BISON_TARBALL)" ]; then \
+			echo ">>>> Downloading bison. To avoid this in future, put it here: $(SRCDIR)/../bison/$(BISON_TARBALL)"; \
+			wget -O "$(SRCDIR)/contrib/$(BISON_TARBALL)" "$(BISON_TARBALL_URL)"; \
+		fi; \
+		tar -xf "$(SRCDIR)/contrib/$(BISON_TARBALL)" -C "$(dir $@)"; \
+	fi
+
+BISON_CONFIGURE_FILES32 := $(BISON_OBJ32)/Makefile
+BISON_CONFIGURE_FILES64 := $(BISON_OBJ64)/Makefile
+
+# 64-bit configure
+$(BISON_CONFIGURE_FILES64): SHELL = $(CONTAINER_SHELL64)
+$(BISON_CONFIGURE_FILES64): $(MAKEFILE_DEP) $(BISON) | $(BISON_OBJ64)
+	cd "$(BISON_OBJ64)" && \
+		LIBS='-lrt' ../$(BISON)/configure --prefix=$(abspath $(BISON_OBJ64))/built
+
+# 32-bit configure
+$(BISON_CONFIGURE_FILES32): SHELL = $(CONTAINER_SHELL32)
+$(BISON_CONFIGURE_FILES32): $(MAKEFILE_DEP) $(BISON) | $(BISON_OBJ32)
+	cd "$(BISON_OBJ32)" && \
+		LIBS='-lrt' ../$(BISON)/configure --prefix=$(abspath $(BISON_OBJ32))/built
+
+
+## bison goals
+BISON_TARGETS = bison bison_configure bison32 bison64 bison_configure32 bison_configure64
+
+ALL_TARGETS += $(BISON_TARGETS)
+
+.PHONY: $(BISON_TARGETS)
+
+bison_configure: $(BISON_CONFIGURE_FILES32) $(BISON_CONFIGURE_FILES64)
+
+bison_configure32: $(BISON_CONFIGURE_FILES32)
+
+bison_configure64: $(BISON_CONFIGURE_FILES64)
+
+bison: bison32 bison64
+
+# These have multiple targets that come from one invocation.  The way to do that is to have both targets on a single
+# intermediate.
+.INTERMEDIATE: bison64-intermediate bison32-intermediate
+
+$(BISON_BIN64) bison64: bison64-intermediate
+
+bison64-intermediate: SHELL = $(CONTAINER_SHELL64)
+bison64-intermediate: $(BISON_CONFIGURE_FILES64) $(filter $(MAKECMDGOALS),bison64)
+	+$(MAKE) -C $(BISON_OBJ64)
+	+$(MAKE) -C $(BISON_OBJ64) install
+	touch $(BISON_BIN64)
+
+$(BISON_BIN32) bison32: bison32-intermediate
+
+bison32-intermediate: SHELL = $(CONTAINER_SHELL32)
+bison32-intermediate: $(BISON_CONFIGURE_FILES32) $(filter $(MAKECMDGOALS),bison32)
+	+$(MAKE) -C $(BISON_OBJ32)
+	+$(MAKE) -C $(BISON_OBJ32) install
+	touch $(BISON_BIN32)
+
+##
 ## dxvk
 ##
 
@@ -1383,16 +1456,25 @@ FONTSCRIPT = $(FONTS)/scripts/generatefont.pe
 FONTLINKPATH = ../../../../fonts
 
 LIBERATION_SRCDIR = $(FONTS)/liberation-fonts/src
+SOURCE_HAN_SANS_SRCDIR =$(FONTS)/source-han-sans
 
 LIBERATION_SANS_REGULAR_SFD = LiberationSans-Regular.sfd
 LIBERATION_SANS_BOLD_SFD = LiberationSans-Bold.sfd
 LIBERATION_SERIF_REGULAR_SFD = LiberationSerif-Regular.sfd
 LIBERATION_MONO_REGULAR_SFD = LiberationMono-Regular.sfd
 
+SOURCE_HAN_SANS_REGULAR_CIDFONTINFO = $(SOURCE_HAN_SANS_SRCDIR)/cidfontinfo.OTC.SC
+SOURCE_HAN_SANS_REGULAR_CIDFONT = $(SOURCE_HAN_SANS_SRCDIR)/cidfont.ps.OTC.SC
+SOURCE_HAN_SANS_REGULAR_FEATURES = $(SOURCE_HAN_SANS_SRCDIR)/features.OTC.SC
+SOURCE_HAN_SANS_REGULAR_SEQUENCES = $(SOURCE_HAN_SANS_SRCDIR)/SourceHanSans_CN_sequences.txt
+SOURCE_HAN_SANS_REGULAR_UNISOURCE = $(SOURCE_HAN_SANS_SRCDIR)/UniSourceHanSansCN-UTF32-H
+YAHEI_MENUNAMEDB = $(FONTS)/patches/YaHei-FontMenuNameDB
+
 LIBERATION_SANS_REGULAR_TTF = $(addprefix $(FONTS_OBJ)/, $(LIBERATION_SANS_REGULAR_SFD:.sfd=.ttf))
 LIBERATION_SANS_BOLD_TTF = $(addprefix $(FONTS_OBJ)/, $(LIBERATION_SANS_BOLD_SFD:.sfd=.ttf))
 LIBERATION_SERIF_REGULAR_TTF = $(addprefix $(FONTS_OBJ)/, $(LIBERATION_SERIF_REGULAR_SFD:.sfd=.ttf))
 LIBERATION_MONO_REGULAR_TTF = $(addprefix $(FONTS_OBJ)/, $(LIBERATION_MONO_REGULAR_SFD:.sfd=.ttf))
+SOURCE_HAN_SANS_REGULAR_OTF = $(FONTS_OBJ)/SourceHanSansSCRegular.otf
 
 LIBERATION_SFDS = $(LIBERATION_SANS_REGULAR_SFD) $(LIBERATION_SANS_BOLD_SFD) $(LIBERATION_SERIF_REGULAR_SFD) $(LIBERATION_MONO_REGULAR_SFD)
 FONT_TTFS = $(LIBERATION_SANS_REGULAR_TTF) $(LIBERATION_SANS_BOLD_TTF) \
@@ -1416,6 +1498,15 @@ $(LIBERATION_MONO_REGULAR_TTF): $(FONTS_SRC) $(FONTSCRIPT)
 	patch $(@:.ttf=.sfd) $(FONTS)/patches/$(LIBERATION_MONO_REGULAR_SFD:.sfd=.patch)
 	$(FONTFORGE) -script $(FONTSCRIPT) $(@:.ttf=.sfd) "CourierNew" "Courier New" "Courier New"
 
+#The use of "YaHei" for compatibility with programs that require that exact string. This font is not Microsoft YaHei.
+$(SOURCE_HAN_SANS_REGULAR_OTF): $(SOURCE_HAN_SANS_REGULAR_CIDFONTINFO) $(SOURCE_HAN_SANS_REGULAR_CIDFONT) \
+		$(SOURCE_HAN_SANS_REGULAR_FEATURES) $(SOURCE_HAN_SANS_REGULAR_SEQUENCES) $(SOURCE_HAN_SANS_REGULAR_UNISOURCE) $(YAHEI_MENUNAMEDB)
+	makeotf -f $(SOURCE_HAN_SANS_REGULAR_CIDFONT) -omitMacNames -ff $(SOURCE_HAN_SANS_REGULAR_FEATURES) \
+		-fi $(SOURCE_HAN_SANS_REGULAR_CIDFONTINFO) -mf $(YAHEI_MENUNAMEDB) -r -nS -cs 25 -ch $(SOURCE_HAN_SANS_REGULAR_UNISOURCE) \
+		-ci $(SOURCE_HAN_SANS_REGULAR_SEQUENCES) -o $(SOURCE_HAN_SANS_REGULAR_OTF)
+	tx -cff +S -no_futile $(SOURCE_HAN_SANS_REGULAR_CIDFONT) $(FONTS_OBJ)/CFF.OTC.SC
+	sfntedit -a CFF=$(FONTS_OBJ)/CFF.OTC.SC $(SOURCE_HAN_SANS_REGULAR_OTF)
+
 $(FONTS_OBJ):
 	mkdir -p $@
 
@@ -1423,7 +1514,8 @@ $(FONTS_SRC): $(FONTS_OBJ)
 	cp -n $(addprefix $(LIBERATION_SRCDIR)/, $(LIBERATION_SFDS)) $<
 
 fonts: $(LIBERATION_SANS_REGULAR_TTF) $(LIBERATION_SANS_BOLD_TTF) \
-       $(LIBERATION_SERIF_REGULAR_TTF) $(LIBERATION_MONO_REGULAR_TTF) | $(FONTS_SRC)
+       $(LIBERATION_SERIF_REGULAR_TTF) $(LIBERATION_MONO_REGULAR_TTF) \
+       $(SOURCE_HAN_SANS_REGULAR_OTF) | $(FONTS_SRC)
 
 ##
 ## Targets
